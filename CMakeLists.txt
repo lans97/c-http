@@ -9,17 +9,15 @@ project(
 
 file(GLOB_RECURSE sources src/*.c src/*.h)
 
-file(GLOB_RECURSE sds_sources
-        "vendor/sds/*.c"
-        "vendor/sds/*.h")
+add_subdirectory(vendor/sds)
+add_subdirectory(vendor/logger)
 
-add_executable(main ${sources} ${sds_sources})
-
-find_package(mimalloc 2.1 REQUIRED)
+add_executable(main ${sources})
 
 target_link_libraries(
-    main PUBLIC
-    mimalloc
+    main PRIVATE
+    sds
+    logger
 )
 
 target_compile_features(
@@ -28,7 +26,6 @@ target_compile_features(
 )
 
 target_include_directories(
-    main PUBLIC
+    main PRIVATE
     "src/"
-    "vendor/sds/"
 )
