@@ -1,6 +1,7 @@
+#include "http_internal.h"
 #include "http.h"
 
-#include <logger.h>
+#include <logger/logger.h>
 
 #include <stddef.h>
 #include <stdio.h>

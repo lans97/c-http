@@ -33,8 +33,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(sds)
 
-target_link_libraries(
-    http PRIVATE
+target_link_libraries(http PRIVATE
     sds::sds
     logger
 )
