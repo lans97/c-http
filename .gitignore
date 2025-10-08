@@ -1,4 +1,6 @@
 .cache/
+Testing/
 bin/
+
 .clang-format
 compile_commands.json

@@ -49,3 +49,21 @@ target_include_directories(
     "src/"
     "include/"
 )
+
+### Testing
+
+enable_testing()
+
+# C Unity Test Project
+
+FetchContent_Declare(
+    unity
+    GIT_REPOSITORY  http://github.com/ThrowTheSwitch/Unity
+    GIT_TAG         v2.6.1
+)
+
+FetchContent_MakeAvailable(unity)
+
+add_executable(sample_test "test/sample.c")
+target_link_libraries(sample_test PRIVATE unity http sds::sds logger)
+add_test(NAME sample COMMAND sample_test)
