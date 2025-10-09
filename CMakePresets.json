@@ -28,7 +28,8 @@
             "name": "debug",
             "configurePreset": "debug",
             "output": {
-                "outputOnFailure": true
+                "verbosity": "verbose",
+                "outputOnFailure": false
             },
             "execution": {
                 "noTestAction": "error",

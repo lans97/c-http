@@ -5,13 +5,18 @@ set(CMAKE_C_STANDARD 23)
 
 project(
     http_server
-    VERSION 1.0
-    LANGUAGES C
+        VERSION 1.0
+        LANGUAGES C
 )
 
-add_library(http SHARED
-    src/http.c
-    #src/**/*.c
+file(
+    GLOB_RECURSE LIB_SOURCES
+        "src/*.c" "src/**/*.c"
+)
+
+add_library(
+    http SHARED
+        ${LIB_SOURCES}
 )
 
 ### Dependencies
@@ -33,9 +38,10 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(sds)
 
-target_link_libraries(http PRIVATE
-    sds::sds
-    logger
+target_link_libraries(
+    http PRIVATE
+        sds::sds
+        logger
 )
 
 target_compile_features(
@@ -45,8 +51,8 @@ target_compile_features(
 
 target_include_directories(
     http PRIVATE
-    "src/"
-    "include/"
+        "src/"
+        "include/"
 )
 
 ### Testing
@@ -63,6 +69,26 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(unity)
 
-add_executable(sample_test "test/sample.c")
-target_link_libraries(sample_test PRIVATE unity http sds::sds logger)
-add_test(NAME sample COMMAND sample_test)
+add_executable(
+    map_test
+        "test/map_test.c"
+        ${LIB_SOURCES}
+)
+target_link_libraries(
+    map_test PRIVATE
+        http
+        sds::sds
+        logger
+        unity
+)
+
+target_include_directories(
+    map_test PRIVATE
+        "src/"
+        "include/"
+)
+
+add_test(
+    NAME map
+    COMMAND map_test
+)
