@@ -2,7 +2,7 @@
 #include <string.h>
 #include <unity.h>
 #include <unity_internals.h>
-#include <map.h>
+#include <map/map.h>
 
 map* m1;
 

@@ -69,26 +69,18 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(unity)
 
-add_executable(
-    map_test
-        "test/map_test.c"
-        ${LIB_SOURCES}
-)
-target_link_libraries(
-    map_test PRIVATE
-        http
-        sds::sds
-        logger
-        unity
-)
+# Executables
+add_executable( map_test "test/map_test.c" ${LIB_SOURCES})
+add_executable( request_test "test/request_test.c" ${LIB_SOURCES})
 
-target_include_directories(
-    map_test PRIVATE
-        "src/"
-        "include/"
-)
+# Linking
+target_link_libraries( map_test PRIVATE http sds::sds logger unity)
+target_link_libraries( request_test PRIVATE http sds::sds logger unity)
 
-add_test(
-    NAME map
-    COMMAND map_test
-)
+# Include
+target_include_directories( map_test PRIVATE "src/" "include/")
+target_include_directories( request_test PRIVATE "src/" "include/")
+
+# Test register
+add_test( NAME map COMMAND map_test)
+add_test( NAME request COMMAND request_test)

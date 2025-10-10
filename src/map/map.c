@@ -40,7 +40,7 @@ map* map_new() {
 // No resizing just yet
 map* map_set(map* this, const char* key, const char* value) {
     if (this == NULL) {
-        LOG_ERROR("this map is NULL");
+        LOG_WARNING("this map is NULL");
         return NULL;
     }
     size_t idx = map_hash(key) % this->capacity;
@@ -94,7 +94,7 @@ map* map_set(map* this, const char* key, const char* value) {
 
 const char* map_get(map* this, const char* key) {
     if (this == NULL) {
-        LOG_ERROR("this map is NULL");
+        LOG_WARNING("this map is NULL");
         return NULL;
     }
     if (this->size < 1)
@@ -113,7 +113,7 @@ const char* map_get(map* this, const char* key) {
 
 map_pair* map_remove_pair(map* this, const char* key) {
     if (this == NULL) {
-        LOG_ERROR("this map is NULL");
+        LOG_WARNING("this map is NULL");
         return NULL;
     }
     if (this->size < 1)
@@ -155,7 +155,7 @@ map_pair* map_remove_pair(map* this, const char* key) {
 
 char* map_remove_value(map* this, const char* key) {
     if (this == NULL) {
-        LOG_ERROR("this map is NULL");
+        LOG_WARNING("this map is NULL");
         return NULL;
     }
     if (this->size < 1)
