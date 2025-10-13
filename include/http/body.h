@@ -3,9 +3,9 @@
 
 #include <stddef.h>
 
-struct http_body {
+typedef struct http_body {
     void*   data;
     size_t  length;
-};
+} http_body;
 
 #endif

@@ -4,12 +4,12 @@
 #include "sds.h"
 #include <netinet/in.h>
 
-struct http_connection {
+typedef struct http_connection {
     int     fd;
     sds     buffer;
     size_t  content_length;
     bool    header_parsed;
     bool    keep_alive;
-};
+} http_connection;
 
 #endif

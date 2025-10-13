@@ -222,6 +222,10 @@ void map_delete(map* this) {
 }
 
 const char** map_keys(map* this, size_t *keys_len) {
+    if (!this) {
+        LOG_ERROR("this map is null");
+        return NULL;
+    }
     const char** keys = malloc(this->size * sizeof(char*));
     if (keys == NULL) {
         LOG_ERROR("Failed to allocate memmory for keys array: %s", strerror(errno));

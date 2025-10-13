@@ -1,3 +1,4 @@
+#include "http/utils.h"
 #include "request_internal.h"
 #include <http/request.h>
 
@@ -6,18 +7,21 @@
 #include "sds.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-http_request* http_request_fromBytes(const char* data, size_t len) {
-    http_request* req = NULL;
+http_request *http_request_fromBytes(const char *data, size_t len) {
+    http_request *req = NULL;
 
-    const char* header_end = NULL;
-    const char* line_end = NULL;
+    const char *header_end = NULL;
+    const char *line_end = NULL;
 
     size_t key_count;
-    const char** keys = NULL;
+    const char **keys = NULL;
 
     header_end = strstr(data, "\r\n\r\n");
     if (header_end == NULL) {
@@ -27,11 +31,13 @@ http_request* http_request_fromBytes(const char* data, size_t len) {
     size_t headers_len = header_end - data;
 
     req = malloc(sizeof(http_request));
-    if (!req) goto cleanup;
+    if (!req)
+        goto cleanup;
 
     req->method = NULL;
     req->uri = NULL;
-    req->version = NULL;
+    req->version.major = UINT8_MAX;
+    req->version.minor = UINT8_MAX;
     req->header = NULL;
     req->body.length = 0;
     req->body.data = NULL;
@@ -42,18 +48,21 @@ http_request* http_request_fromBytes(const char* data, size_t len) {
         goto cleanup;
     }
 
-    if (parse_request_line(req, data, line_end - data) != 0) goto cleanup;
-
-    if (parse_headers(req, line_end + 2, headers_len - (line_end - data) - 2) != 0)
+    if (parse_request_line(req, data, line_end - data) != 0)
         goto cleanup;
 
-    const char* body_start = header_end + strlen("\r\n\r\n");
+    if (parse_headers(req, line_end + 2, headers_len - (line_end - data) - 2) !=
+        0)
+        goto cleanup;
+
+    const char *body_start = header_end + strlen("\r\n\r\n");
     size_t body_len = len - (body_start - data);
 
     req->body.length = body_len;
     if (body_len > 0) {
         req->body.data = malloc(body_len);
-        if (!req->body.data) goto cleanup;
+        if (!req->body.data)
+            goto cleanup;
         memcpy(req->body.data, body_start, body_len);
     } else {
         req->body.data = NULL;
@@ -62,47 +71,53 @@ http_request* http_request_fromBytes(const char* data, size_t len) {
     if (req->header != NULL) {
         keys = map_keys(req->header, &key_count);
         if (str_arr_contains(keys, "content-length", key_count)) {
-            char* endptr;
-            size_t expected_len = strtoul(map_get(req->header, "content-length"), &endptr, 10);
+            char *endptr;
+            size_t expected_len =
+                strtoul(map_get(req->header, "content-length"), &endptr, 10);
             if (expected_len != req->body.length) {
-                LOG_WARNING("Content-Length header (%zu) does not match actual body lenght (%zu). Request may be invalid.", expected_len, req->body.length);
+                LOG_WARNING("Content-Length header (%zu) does not match actual "
+                            "body lenght (%zu). Request may be invalid.",
+                            expected_len, req->body.length);
                 goto cleanup;
             }
         }
     }
 
-    if (keys) free(keys);
+    if (keys)
+        free(keys);
     return req;
 
 cleanup:
     if (req) {
         http_request_delete(req);
     }
-    if (keys) free(keys);
+    if (keys)
+        free(keys);
 
     return NULL;
 }
 
-void http_request_delete(http_request* this) {
+void http_request_delete(http_request *this) {
     if (this) {
-        if (this->method) sdsfree(this->method);
-        if (this->uri) sdsfree(this->uri);
-        if (this->version) sdsfree(this->version);
-        if (this->header) map_delete(this->header);
-        if (this->body.data) free(this->body.data);
+        if (this->method)
+            sdsfree(this->method);
+        if (this->uri)
+            sdsfree(this->uri);
+        if (this->header)
+            map_delete(this->header);
+        if (this->body.data)
+            free(this->body.data);
         free(this);
-    } else {
-        LOG_WARNING("this http_request is null");
     }
 }
 
-void free_sdsarr(sds* arr, int arrlen) {
+void free_sdsarr(sds *arr, int arrlen) {
     for (int i = 0; i < arrlen; i++) {
         sdsfree(arr[i]);
     }
 }
 
-int parse_request_line(http_request* req, const char* data, size_t len) {
+int parse_request_line(http_request *req, const char *data, size_t len) {
     size_t sp1 = 0, sp2 = 0;
 
     for (size_t i = 0; i < len && (!sp1 || !sp2); i++) {
@@ -112,32 +127,62 @@ int parse_request_line(http_request* req, const char* data, size_t len) {
             sp2 = i;
     }
 
-    if (!sp1 || !sp2 || sp2 == sp1+1) {
-        LOG_ERROR(
-            "Malformed request line: Incorrect number of spaces or zero length component."
-        );
+    if (!sp1 || !sp2 || sp2 == sp1 + 1) {
+        LOG_ERROR("Malformed request line: Incorrect number of spaces or zero "
+                  "length component.");
         return 1;
     }
 
     size_t method_start = 0;
     size_t method_len = sp1;
 
-    size_t uri_start = sp1+1;
-    size_t uri_len = sp2-sp1-1;
+    size_t uri_start = sp1 + 1;
+    size_t uri_len = sp2 - sp1 - 1;
 
-    size_t version_start = sp2+1;
-    size_t version_len = len-sp2-1;
+    size_t version_start = sp2 + 1;
+    size_t version_len = len - sp2 - 1;
 
     if (version_len == 0 || (version_start + version_len != len)) {
-        LOG_ERROR("Malformed requiest line: Missing HTTP version or junk characters at the end.");
+        LOG_ERROR("Malformed requiest line: Missing HTTP version or junk "
+                  "characters at the end.");
         return 1;
     }
 
     req->method = sdsnewlen(data + method_start, method_len);
     req->uri = sdsnewlen(data + uri_start, uri_len);
-    req->version = sdsnewlen(data + version_start, version_len);
 
-    if (!req->method || !req->uri || !req->version) {
+    char version_str[10];
+    if (version_len >= 9) {
+        LOG_ERROR("Malformed request line: version too long");
+        return 1;
+    }
+
+    memcpy(version_str, data + version_start, version_len);
+    version_str[version_len] = 0;
+
+    int items_read = sscanf(version_str, "HTTP/%" SCNu8 ".%" SCNu8,
+                            &req->version.major, &req->version.minor);
+
+    if (items_read == 0 || items_read > 2) {
+        LOG_ERROR("Malformed request line: incorrect version format.");
+        return 1;
+    }
+    if (items_read == 1) {
+        if (req->version.major > 3) {
+            LOG_ERROR("Malformed request line: invalid HTTP version.");
+            return 1;
+        } else
+            req->version.minor = 0;
+    }
+
+    if (items_read == 2) {
+        if (!http_version_isValid(&req->version)) {
+            LOG_ERROR("Malformed request line: invalid HTTP version.");
+            return 1;
+        }
+    }
+
+    if (!req->method || !req->uri) {
         LOG_ERROR("Failed to allocate memory for request line components.");
         return 1;
     }
@@ -145,10 +190,10 @@ int parse_request_line(http_request* req, const char* data, size_t len) {
     return 0;
 }
 
-int parse_headers(http_request* req, const char* data, size_t len) {
-    const char* cur_line = data;
-    const char* block_end = data + len;
-    const char* line_end = NULL;
+int parse_headers(http_request *req, const char *data, size_t len) {
+    const char *cur_line = data;
+    const char *block_end = data + len;
+    const char *line_end = NULL;
     size_t line_len = 0;
 
     if (len == 0)
@@ -177,11 +222,12 @@ int parse_headers(http_request* req, const char* data, size_t len) {
     return 0;
 }
 
-int parse_single_header(http_request* req, const char* line, size_t len) {
-    const char* colon = (const char*) memchr(line, ':', len);
+int parse_single_header(http_request *req, const char *line, size_t len) {
+    const char *colon = (const char *)memchr(line, ':', len);
 
     if (!colon || colon == line) {
-        LOG_ERROR("Malformed request: header line missing colon [:] or is empty.");
+        LOG_ERROR(
+            "Malformed request: header line missing colon [:] or is empty.");
         return 1;
     }
 
@@ -201,7 +247,7 @@ int parse_single_header(http_request* req, const char* line, size_t len) {
 
     sdstolower(key);
 
-    const char* value_start = colon + 1;
+    const char *value_start = colon + 1;
     size_t value_len = len - (value_start - line);
 
     sds value = sdsnewlen(value_start, value_len);
@@ -220,4 +266,42 @@ int parse_single_header(http_request* req, const char* line, size_t len) {
     sdsfree(value);
 
     return 0;
+}
+
+const char *http_request_Method(http_request *this) { return this->method; }
+
+const char *http_request_Uri(http_request *this) { return this->uri; }
+
+http_version *http_request_Version(http_request *this) {
+    return &this->version;
+}
+
+void http_request_HeaderSetValue(http_request *this, const char *headerKey,
+                                 const char *headerValue) {
+    this->header = map_set(this->header, headerKey, headerValue);
+}
+
+const char *http_request_HeaderGetValue(http_request *this,
+                                        const char *headerKey) {
+    return map_get(this->header, headerKey);
+}
+
+const char **http_request_HeaderKeys(http_request *this, size_t *keys_length) {
+    return map_keys(this->header, keys_length);
+}
+
+bool http_request_HeaderContains(http_request *this, const char *headerKey) {
+    const char** headerKeys = NULL;
+    size_t headerKeysLength = 0;
+
+    headerKeys = map_keys(this->header, &headerKeysLength);
+
+    bool contains = str_arr_contains(headerKeys, headerKey, headerKeysLength);
+    free(headerKeys);
+
+    return contains;
+}
+
+http_body *http_request_Body(http_request *this) {
+    return &this->body;
 }

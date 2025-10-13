@@ -1,15 +1,16 @@
 #ifndef REQUEST_INTERNAL_H
 #define REQUEST_INTERNAL_H
 
-#include "body.h"
+#include "http/body.h"
+#include "http/utils.h"
 #include "map/map.h"
 
 struct http_request {
     sds                 method;
     sds                 uri;
-    sds                 version;
+    http_version        version;
     map*                header;
-    struct  http_body   body;
+    http_body           body;
 };
 
 void    free_sdsarr(sds* arr, int arrlen);

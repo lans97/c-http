@@ -1,16 +1,19 @@
 #ifndef RESPONSE_INTERNAL_H
 #define RESPONSE_INTERNAL_H
 
-#include "body.h"
+#include "http/body.h"
+#include "http/utils.h"
 #include <map/map.h>
 #include <stdint.h>
 
 struct http_response {
     uint16_t            status_code;
     sds                 reason_phrase;
-    sds                 version;
+    http_version        version;
     map*                header;
-    struct http_body    body;
+    http_body           body;
 };
+
+bool isStringSafe(const char* string, size_t length);
 
 #endif
