@@ -1,5 +1,4 @@
-#ifndef HTTP_RESPONSE_CODES_H
-#define HTTP_RESPONSE_CODES_H
+#pragma once
 
 #define HTTP_NO_STATUS                              0
 
@@ -76,4 +75,3 @@
 #define HTTP_STATUS_NOT_EXTENDED                    510
 #define HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED 511
 
-#endif

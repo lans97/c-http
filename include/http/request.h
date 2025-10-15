@@ -1,27 +1,118 @@
-#ifndef REQUEST_H
-#define REQUEST_H
+#pragma once
 
 #include "body.h"
-#include "http/utils.h"
+#include "version.h"
+#include "results.h"
+#include "utils.h"
+
 #include <stddef.h>
+
 struct http_request;
 typedef struct http_request http_request;
 
-http_request *http_request_fromBytes(const char *data, size_t len);
+DECLARE_RESULT_TYPE(http_request *, HTTPRequestResult);
+
+/**
+ * Creates a new http_request from an array of bytes
+ * validates basic request format but does not enforce
+ * multiple RFC validations
+ *
+ * @param data  Byte array
+ * @param len   Length of byte array
+ *
+ * @returns HTTPRequestResult. Must unwrap to get http_request
+ */
+HTTPRequestResult http_request_fromBytes(const char *data, size_t len);
+
+/**
+ * Clean and delete http_request pointer
+ *
+ * @param this  Request to be deleted
+ */
 void http_request_delete(http_request *this);
 
-const char *http_request_Method(http_request *this);
-const char *http_request_Uri(http_request *this);
-http_version *http_request_Version(http_request *this);
+/**
+ * http_request.method getter
+ *
+ * @param this  Request
+ *
+ * @returns StringResult. Must unwrap to get method string
+ */
+StringResult http_request_Method(http_request *this);
 
-void http_request_HeaderSetValue(http_request *this, const char *headerKey,
-                                 const char *headerValue);
-const char *http_request_HeaderGetValue(http_request *this,
-                                        const char *headerKey);
+/**
+ * http_request.uri getter
+ *
+ * @param this  Request
+ *
+ * @returns StringResult. Must unwrap to get uri string
+ */
+StringResult http_request_Uri(http_request *this);
 
-const char **http_request_HeaderKeys(http_request *this, size_t *keys_length);
-bool http_request_HeaderContains(http_request *this, const char *headerKey);
+/**
+ * http_request.version getter
+ *
+ * @param this Request
+ *
+ * @returns HTTPVersionResult. Must unwrap to get http_version
+ */
+HTTPVersionResult http_request_Version(http_request *this);
 
-http_body *http_request_Body(http_request *this);
+/**
+ * http_request.body getter
+ *
+ * @param this Request
+ *
+ * @returns HTTPBodyResult. Must unwrap to get http_request_body
+ */
+HTTPBodyResult http_request_Body(http_request *this);
 
-#endif
+/**
+ * Adds a kv pair to http_request.header
+ *
+ * @param this          Request
+ * @param headerKey     Key for storage
+ * @param headerValue   Value to store
+ *
+ * @returns Error string. Null if no error
+ */
+const char *http_request_HeaderSetValue(http_request *this,
+                                        const char *headerKey,
+                                        const char *headerValue);
+
+/**
+ * Retrieves a kv pair from http_request.header
+ *
+ * @param this          Request
+ * @param headerKey     Key to lookup
+ *
+ * @returns StringResult. Must unwrap to get value string.
+ */
+StringResult http_request_HeaderGetValue(http_request *this,
+                                         const char *headerKey);
+
+/**
+ * Get an array with all the header keys in the http_request
+ *
+ * @param this          Request
+ * @param keys_length   size_t address to store length of keys array
+ *
+ * @returns StringArrResult. Must unwrap to get key array. Must free arr after
+ * use
+ */
+StringArrResult http_request_HeaderKeys(http_request *this, size_t *keys_length);
+
+/**
+ * Whether or not this.header contains the key in 'headerKey'
+ *
+ * @param this      Request
+ * @param headerKey Key to look for in this.header
+ *
+ * @returns bool    True if 'headerKey' is found else False
+ */
+BoolResult http_request_HeaderContains(http_request *this, const char *headerKey);
+
+
+static inline void cleanup_http_request(http_request** p) {
+    http_request_delete(*p);
+}

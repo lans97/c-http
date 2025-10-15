@@ -1,14 +1,15 @@
-#ifndef RESPONSE_H
-#define RESPONSE_H
+#pragma once
 
-#include "http/body.h"
-#include "http/utils.h"
+#include "body.h"
+#include "utils.h"
 #include <stddef.h>
 #include <stdint.h>
 struct response;
 typedef struct http_response http_response;
 
-http_response*  http_response_new(void);
+DECLARE_RESULT_TYPE(http_response*, HTTPResponseResult);
+
+HTTPResponseResult http_response_new(void);
 
 char*           http_response_bytes(http_response* this);
 
@@ -32,4 +33,6 @@ bool            http_response_HeaderContains(http_response* this, const char* he
 int             http_response_SetBody(http_response* this, void* data, size_t length);
 http_body*      http_response_GetBody(http_response* this);
 
-#endif
+static inline void cleanup_http_response(http_response** p) {
+    http_response_delete(*p);
+}

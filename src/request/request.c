@@ -1,4 +1,6 @@
-#include "http/utils.h"
+#include "http/body.h"
+#include "http/results.h"
+#include "http/version.h"
 #include "request_internal.h"
 #include <http/request.h>
 
@@ -14,25 +16,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-http_request *http_request_fromBytes(const char *data, size_t len) {
-    http_request *req = NULL;
+DEFINE_RESULT_TYPE(http_request*, HTTPRequestResult);
+
+HTTPRequestResult http_request_fromBytes(const char *data, size_t len) {
+    http_request* req __attribute__((cleanup(cleanup_http_request))) = malloc(sizeof(http_request));
 
     const char *header_end = NULL;
     const char *line_end = NULL;
 
     size_t key_count;
-    const char **keys = NULL;
 
     header_end = strstr(data, "\r\n\r\n");
-    if (header_end == NULL) {
-        LOG_ERROR("Malformed request: Missing header-body separator.");
-        goto cleanup;
-    }
+    if (header_end == NULL)
+        return HTTPRequestResult_Error("Malformed request: Missing header-body separator.");
+
     size_t headers_len = header_end - data;
 
-    req = malloc(sizeof(http_request));
     if (!req)
-        goto cleanup;
+        return HTTPRequestResult_Error("Not enough memory");
 
     req->method = NULL;
     req->uri = NULL;
@@ -44,31 +45,29 @@ http_request *http_request_fromBytes(const char *data, size_t len) {
 
     line_end = strstr(data, "\r\n");
     if (line_end == NULL || line_end > header_end) {
-        LOG_ERROR("Malformed request: Cannot find end of request line.");
-        goto cleanup;
+        return HTTPRequestResult_Error("Malformed request: Cannot find end of request line.");
     }
 
-    if (parse_request_line(req, data, line_end - data) != 0)
-        goto cleanup;
+    if (parse_request_line(req, data, line_end - data) != 0) {
+        // TODO: Handle Err
+    }
 
     if (parse_headers(req, line_end + 2, headers_len - (line_end - data) - 2) !=
-        0)
-        goto cleanup;
+        0) {
+        // TODO: Handle Err
+    }
 
     const char *body_start = header_end + strlen("\r\n\r\n");
     size_t body_len = len - (body_start - data);
 
-    req->body.length = body_len;
     if (body_len > 0) {
-        req->body.data = malloc(body_len);
-        if (!req->body.data)
-            goto cleanup;
-        memcpy(req->body.data, body_start, body_len);
+        http_body_initWithBody(&req->body, (void*) body_start, body_len);
     } else {
         req->body.data = NULL;
     }
 
     if (req->header != NULL) {
+        const char** keys;
         keys = map_keys(req->header, &key_count);
         if (str_arr_contains(keys, "content-length", key_count)) {
             char *endptr;
@@ -78,23 +77,16 @@ http_request *http_request_fromBytes(const char *data, size_t len) {
                 LOG_WARNING("Content-Length header (%zu) does not match actual "
                             "body lenght (%zu). Request may be invalid.",
                             expected_len, req->body.length);
-                goto cleanup;
+                const char* m = "Content length does not match";
+                free(keys);
+                return HTTPRequestResult_Error("Invalid header value 'Content-Length'");
             }
         }
     }
 
-    if (keys)
-        free(keys);
-    return req;
-
-cleanup:
-    if (req) {
-        http_request_delete(req);
-    }
-    if (keys)
-        free(keys);
-
-    return NULL;
+    HTTPRequestResult res = { .Ok = true, .Value = req};
+    req = NULL;
+    return res;
 }
 
 void http_request_delete(http_request *this) {
@@ -111,13 +103,7 @@ void http_request_delete(http_request *this) {
     }
 }
 
-void free_sdsarr(sds *arr, int arrlen) {
-    for (int i = 0; i < arrlen; i++) {
-        sdsfree(arr[i]);
-    }
-}
-
-int parse_request_line(http_request *req, const char *data, size_t len) {
+ErrorMessage parse_request_line(http_request *req, const char *data, size_t len) {
     size_t sp1 = 0, sp2 = 0;
 
     for (size_t i = 0; i < len && (!sp1 || !sp2); i++) {
@@ -190,7 +176,7 @@ int parse_request_line(http_request *req, const char *data, size_t len) {
     return 0;
 }
 
-int parse_headers(http_request *req, const char *data, size_t len) {
+ErrorMessage parse_headers(http_request *req, const char *data, size_t len) {
     const char *cur_line = data;
     const char *block_end = data + len;
     const char *line_end = NULL;
@@ -222,27 +208,22 @@ int parse_headers(http_request *req, const char *data, size_t len) {
     return 0;
 }
 
-int parse_single_header(http_request *req, const char *line, size_t len) {
+ErrorMessage parse_single_header(http_request *req, const char *line, size_t len) {
     const char *colon = (const char *)memchr(line, ':', len);
 
-    if (!colon || colon == line) {
-        LOG_ERROR(
-            "Malformed request: header line missing colon [:] or is empty.");
-        return 1;
-    }
+    if (!colon || colon == line)
+        return "Malformed request: header line missing colon [:] or is empty.";
 
     size_t key_len = colon - line;
 
     sds key = sdsnewlen(line, key_len);
-    if (!key) {
-        LOG_ERROR("Failed to allocate memory for new key string");
-        return 1;
-    }
+    if (!key)
+        return "Failed to allocate memory for new key string";
 
     key = sdstrim(key, " ");
     if (sdslen(key) == 0) {
         sdsfree(key);
-        return 1;
+        return "Malformed request: Invalid key with only whitespace.";
     }
 
     sdstolower(key);
@@ -252,8 +233,7 @@ int parse_single_header(http_request *req, const char *line, size_t len) {
 
     sds value = sdsnewlen(value_start, value_len);
     if (!value) {
-        LOG_ERROR("Failed to allocate memory for new value string");
-        return 1;
+        return "Failed to allocate memory for new value string";
     }
     value = sdstrim(value, " ");
 
@@ -265,15 +245,19 @@ int parse_single_header(http_request *req, const char *line, size_t len) {
     sdsfree(key);
     sdsfree(value);
 
-    return 0;
+    return NULL;
 }
 
-const char *http_request_Method(http_request *this) { return this->method; }
+StringResult http_request_Method(http_request *this) { return StringResult_Ok(this->method); }
 
-const char *http_request_Uri(http_request *this) { return this->uri; }
+StringResult http_request_Uri(http_request *this) { return StringResult_Ok(this->uri); }
 
-http_version *http_request_Version(http_request *this) {
-    return &this->version;
+HTTPVersionResult http_request_Version(http_request *this) {
+    return HTTPVersionResult_Ok(this->version);
+}
+
+HTTPBodyResult http_request_Body(http_request *this) {
+    return &this->body;
 }
 
 void http_request_HeaderSetValue(http_request *this, const char *headerKey,
@@ -295,6 +279,8 @@ bool http_request_HeaderContains(http_request *this, const char *headerKey) {
     size_t headerKeysLength = 0;
 
     headerKeys = map_keys(this->header, &headerKeysLength);
+    if (!headerKeys)
+        return false;
 
     bool contains = str_arr_contains(headerKeys, headerKey, headerKeysLength);
     free(headerKeys);
@@ -302,6 +288,3 @@ bool http_request_HeaderContains(http_request *this, const char *headerKey) {
     return contains;
 }
 
-http_body *http_request_Body(http_request *this) {
-    return &this->body;
-}

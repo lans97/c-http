@@ -1,5 +1,4 @@
-#ifndef HTTP_SERVER_INTERNAL_H
-#define HTTP_SERVER_INTERNAL_H
+#pragma once
 
 #include "sds.h"
 #include <netinet/in.h>
@@ -17,4 +16,3 @@ int                 http_connection_bindAndListen(http_connection *this,
                                                   int port);
 void                http_connection_delete(http_connection* this);
 
-#endif

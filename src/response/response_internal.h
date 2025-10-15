@@ -1,5 +1,4 @@
-#ifndef RESPONSE_INTERNAL_H
-#define RESPONSE_INTERNAL_H
+#pragma once
 
 #include "http/body.h"
 #include "http/utils.h"
@@ -16,4 +15,3 @@ struct http_response {
 
 bool isStringSafe(const char* string, size_t length);
 
-#endif

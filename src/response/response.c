@@ -1,16 +1,20 @@
-#include "logger/logger.h"
-#include "map/map.h"
 #include "response_internal.h"
 #include <http/response.h>
 
 #include "response/response_codes.h"
+
+#include "logger/logger.h"
+#include "map/map.h"
 #include "sds.h"
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-http_response *http_response_new(void) {
+DEFINE_RESULT_TYPE(http_response*, HTTPResponseResult);
+
+HTTPResponseResult http_response_new(void) {
     http_response *new_response = malloc(sizeof(http_response));
 
     new_response->status_code = HTTP_NO_STATUS;

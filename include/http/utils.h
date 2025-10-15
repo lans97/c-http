@@ -1,12 +1,6 @@
-#ifndef HTTP_UTILS_H
-#define HTTP_UTILS_H
-
+#pragma once
+#include <assert.h>
 #include <stdint.h>
-typedef struct http_version {
-    uint8_t major;
-    uint8_t minor;
-} http_version;
+#include <sds.h>
 
-bool http_version_isValid(http_version* this);
-
-#endif//HTTP_UTILS_H
+void free_sdsarr(sds* arr, int arrlen);

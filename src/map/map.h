@@ -1,5 +1,4 @@
-#ifndef MAP_H
-#define MAP_H
+#pragma once
 
 #include <sds.h>
 #include <stddef.h>
@@ -92,4 +91,3 @@ bool str_arr_contains(const char** arr, const char* s, size_t arr_len);
  */
 size_t next_prime(size_t n);
 
-#endif
