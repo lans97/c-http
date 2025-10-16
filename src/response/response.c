@@ -15,23 +15,6 @@
 
 DEFINE_RESULT_TYPE(http_response*, HTTPResponseResult);
 
-ErrorMessage            http_response_SetStatusCode(http_response* this, uint16_t code);
-
-ConstStringResult       http_response_ReasonPhrase(http_response* this);
-ErrorMessage            http_response_SetReasonPhrase(http_response* this, const char* reason_phrase);
-
-HTTPVersionResult       http_response_Version(http_response* this);
-ErrorMessage            http_response_SetVersion(http_response* this, uint8_t major, uint8_t minor);
-
-ErrorMessage            http_response_HeaderSetValue(http_response* this, const char* headerKey, const char* headerValue);
-ConstStringResult       http_response_HeaderGetValue(http_response* this, const char* headerKey);
-
-ConstStringArrResult    http_response_HeaderKeys(http_response* this, size_t* keys_length);
-BoolResult              http_response_HeaderContains(http_response* this, const char* headerKey);
-
-ErrorMessage            http_response_SetBody(http_response* this, void* data, size_t length);
-HTTPBodyResult          http_response_GetBody(http_response* this);
-
 HTTPResponseResult http_response_new(void) {
     http_response *new_response = malloc(sizeof(http_response));
     if (!new_response)

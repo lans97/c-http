@@ -13,8 +13,7 @@ struct http_request {
     http_body           body;
 };
 
-
 ErrorMessage    parse_request_line(struct http_request* req, const char* data, size_t len);
 ErrorMessage    parse_headers(struct http_request* req, const char* data, size_t len);
 ErrorMessage    parse_single_header(struct http_request* req, const char* line, size_t len);
-
+bool            validate_content_headers(struct http_request* this);

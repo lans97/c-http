@@ -11,6 +11,9 @@ typedef struct http_request http_request;
 
 DECLARE_RESULT_TYPE(http_request *, HTTPRequestResult);
 
+
+HTTPRequestResult http_request_new(void);
+
 /**
  * Creates a new http_request from an array of bytes
  * validates basic request format but does not enforce
@@ -21,7 +24,7 @@ DECLARE_RESULT_TYPE(http_request *, HTTPRequestResult);
  *
  * @returns HTTPRequestResult. Must unwrap to get http_request
  */
-HTTPRequestResult http_request_fromBytes(const char *data, size_t len);
+ErrorMessage http_request_parse(http_request* this, const char *data, size_t len);
 
 /**
  * Clean and delete http_request pointer

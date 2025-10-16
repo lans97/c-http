@@ -17,10 +17,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-DEFINE_RESULT_TYPE(http_request*, HTTPRequestResult);
+DEFINE_RESULT_TYPE(http_request *, HTTPRequestResult);
 
-HTTPRequestResult http_request_fromBytes(const char *data, size_t len) {
-    http_request* req __attribute__((cleanup(cleanup_http_request))) = malloc(sizeof(http_request));
+HTTPRequestResult http_request_new(void) {
+    http_request *req = malloc(sizeof(http_request));
+    http_body_init(&req->body);
+    req->header = NULL;
+    req->method = NULL;
+    req->uri = NULL;
+    req->version.major = 1;
+    req->version.minor = 1;
+
+    return HTTPRequestResult_Ok(req);
+}
+
+ErrorMessage http_request_parse(http_request *this, const char *data,
+                                size_t len) {
+    if (!this)
+        return "This is null";
 
     const char *header_end = NULL;
     const char *line_end = NULL;
@@ -29,65 +43,47 @@ HTTPRequestResult http_request_fromBytes(const char *data, size_t len) {
 
     header_end = strstr(data, "\r\n\r\n");
     if (header_end == NULL)
-        return HTTPRequestResult_Error("Malformed request: Missing header-body separator.");
+        return "Malformed request: Missing header-body separator.";
 
     size_t headers_len = header_end - data;
 
-    if (!req)
-        return HTTPRequestResult_Error("Not enough memory");
-
-    req->method = NULL;
-    req->uri = NULL;
-    req->version.major = UINT8_MAX;
-    req->version.minor = UINT8_MAX;
-    req->header = NULL;
-    req->body.length = 0;
-    req->body.data = NULL;
+    this->method = NULL;
+    this->uri = NULL;
+    this->version.major = UINT8_MAX;
+    this->version.minor = UINT8_MAX;
+    this->header = NULL;
+    this->body.length = 0;
+    this->body.data = NULL;
 
     line_end = strstr(data, "\r\n");
     if (line_end == NULL || line_end > header_end) {
-        return HTTPRequestResult_Error("Malformed request: Cannot find end of request line.");
+        return "Malformed request: Cannot find end of request line.";
     }
+    ErrorMessage errPRL = parse_request_line(this, data, line_end - data);
+    if (errPRL != NULL)
+        return errPRL;
 
-    if (parse_request_line(req, data, line_end - data) != 0) {
-        // TODO: Handle Err
-    }
-
-    if (parse_headers(req, line_end + 2, headers_len - (line_end - data) - 2) !=
-        0) {
-        // TODO: Handle Err
-    }
+    ErrorMessage errPH =
+        parse_headers(this, line_end + 2, headers_len - (line_end - data) - 2);
+    if (errPH != 0)
+        return errPH;
 
     const char *body_start = header_end + strlen("\r\n\r\n");
     size_t body_len = len - (body_start - data);
 
     if (body_len > 0) {
-        http_body_initWithBody(&req->body, (void*) body_start, body_len);
+        ErrorMessage errBody =
+            http_body_initWithBody(&this->body, (void *)body_start, body_len);
+        if (errBody)
+            return errBody;
     } else {
-        req->body.data = NULL;
+        this->body.data = NULL;
     }
 
-    if (req->header != NULL) {
-        const char** keys;
-        keys = map_keys(req->header, &key_count);
-        if (str_arr_contains(keys, "content-length", key_count)) {
-            char *endptr;
-            size_t expected_len =
-                strtoul(map_get(req->header, "content-length"), &endptr, 10);
-            if (expected_len != req->body.length) {
-                LOG_WARNING("Content-Length header (%zu) does not match actual "
-                            "body lenght (%zu). Request may be invalid.",
-                            expected_len, req->body.length);
-                const char* m = "Content length does not match";
-                free(keys);
-                return HTTPRequestResult_Error("Invalid header value 'Content-Length'");
-            }
-        }
-    }
+    if (!validate_content_headers(this))
+        return "Content headers do not match body";
 
-    HTTPRequestResult res = { .Ok = true, .Value = req};
-    req = NULL;
-    return res;
+    return NULL;
 }
 
 void http_request_delete(http_request *this) {
@@ -104,7 +100,8 @@ void http_request_delete(http_request *this) {
     }
 }
 
-ErrorMessage parse_request_line(http_request *req, const char *data, size_t len) {
+ErrorMessage parse_request_line(http_request *req, const char *data,
+                                size_t len) {
     size_t sp1 = 0, sp2 = 0;
 
     for (size_t i = 0; i < len && (!sp1 || !sp2); i++) {
@@ -129,7 +126,7 @@ ErrorMessage parse_request_line(http_request *req, const char *data, size_t len)
 
     if (version_len == 0 || (version_start + version_len != len))
         return "Malformed requiest line: Missing HTTP version or junk "
-                  "characters at the end.";
+               "characters at the end.";
 
     req->method = sdsnewlen(data + method_start, method_len);
     req->uri = sdsnewlen(data + uri_start, uri_len);
@@ -183,7 +180,7 @@ ErrorMessage parse_headers(http_request *req, const char *data, size_t len) {
 
         line_len = line_end - cur_line;
 
-        const char* err = parse_single_header(req, cur_line, line_len);
+        const char *err = parse_single_header(req, cur_line, line_len);
         if (err != NULL)
             return err;
 
@@ -193,7 +190,8 @@ ErrorMessage parse_headers(http_request *req, const char *data, size_t len) {
     return NULL;
 }
 
-ErrorMessage parse_single_header(http_request *req, const char *line, size_t len) {
+ErrorMessage parse_single_header(http_request *req, const char *line,
+                                 size_t len) {
     const char *colon = (const char *)memchr(line, ':', len);
 
     if (!colon || colon == line)
@@ -232,9 +230,13 @@ ErrorMessage parse_single_header(http_request *req, const char *line, size_t len
     return NULL;
 }
 
-StringResult http_request_Method(http_request *this) { return StringResult_Ok(this->method); }
+StringResult http_request_Method(http_request *this) {
+    return StringResult_Ok(this->method);
+}
 
-StringResult http_request_Uri(http_request *this) { return StringResult_Ok(this->uri); }
+StringResult http_request_Uri(http_request *this) {
+    return StringResult_Ok(this->uri);
+}
 
 HTTPVersionResult http_request_Version(http_request *this) {
     return HTTPVersionResult_Ok(&this->version);
@@ -255,16 +257,18 @@ const char *http_request_HeaderSetValue(http_request *this,
 }
 
 ConstStringResult http_request_HeaderGetValue(http_request *this,
-                                        const char *headerKey) {
+                                              const char *headerKey) {
     return ConstStringResult_Ok(map_get(this->header, headerKey));
 }
 
-ConstStringArrResult http_request_HeaderKeys(http_request *this, size_t *keys_length) {
+ConstStringArrResult http_request_HeaderKeys(http_request *this,
+                                             size_t *keys_length) {
     return ConstStringArrResult_Ok(map_keys(this->header, keys_length));
 }
 
-BoolResult http_request_HeaderContains(http_request *this, const char *headerKey) {
-    const char** headerKeys = NULL;
+BoolResult http_request_HeaderContains(http_request *this,
+                                       const char *headerKey) {
+    const char **headerKeys = NULL;
     size_t headerKeysLength = 0;
 
     headerKeys = map_keys(this->header, &headerKeysLength);
@@ -277,3 +281,21 @@ BoolResult http_request_HeaderContains(http_request *this, const char *headerKey
     return BoolResult_Ok(contains);
 }
 
+bool validate_content_headers(struct http_request *this) {
+    size_t key_count = 0;
+    if (this->header != NULL) {
+        const char **keys;
+        keys = map_keys(this->header, &key_count);
+        if (str_arr_contains(keys, "content-length", key_count)) {
+            char *endptr;
+            size_t expected_len =
+                strtoul(map_get(this->header, "content-length"), &endptr, 10);
+            if (expected_len != this->body.length) {
+                free(keys);
+                return false;
+            }
+        }
+        free(keys);
+    }
+    return true;
+}
