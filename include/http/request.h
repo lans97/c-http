@@ -3,7 +3,6 @@
 #include "body.h"
 #include "version.h"
 #include "results.h"
-#include "utils.h"
 
 #include <stddef.h>
 
@@ -88,7 +87,7 @@ const char *http_request_HeaderSetValue(http_request *this,
  *
  * @returns StringResult. Must unwrap to get value string.
  */
-StringResult http_request_HeaderGetValue(http_request *this,
+ConstStringResult http_request_HeaderGetValue(http_request *this,
                                          const char *headerKey);
 
 /**
@@ -100,7 +99,7 @@ StringResult http_request_HeaderGetValue(http_request *this,
  * @returns StringArrResult. Must unwrap to get key array. Must free arr after
  * use
  */
-StringArrResult http_request_HeaderKeys(http_request *this, size_t *keys_length);
+ConstStringArrResult http_request_HeaderKeys(http_request *this, size_t *keys_length);
 
 /**
  * Whether or not this.header contains the key in 'headerKey'

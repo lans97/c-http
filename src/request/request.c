@@ -1,8 +1,9 @@
+#include "request_internal.h"
+#include <http/request.h>
+
 #include "http/body.h"
 #include "http/results.h"
 #include "http/version.h"
-#include "request_internal.h"
-#include <http/request.h>
 
 #include "logger/logger.h"
 #include "map/map.h"
@@ -113,11 +114,9 @@ ErrorMessage parse_request_line(http_request *req, const char *data, size_t len)
             sp2 = i;
     }
 
-    if (!sp1 || !sp2 || sp2 == sp1 + 1) {
-        LOG_ERROR("Malformed request line: Incorrect number of spaces or zero "
-                  "length component.");
-        return 1;
-    }
+    if (!sp1 || !sp2 || sp2 == sp1 + 1)
+        return "Malformed request line: Incorrect number of spaces or zero "
+               "length component.";
 
     size_t method_start = 0;
     size_t method_len = sp1;
@@ -128,20 +127,16 @@ ErrorMessage parse_request_line(http_request *req, const char *data, size_t len)
     size_t version_start = sp2 + 1;
     size_t version_len = len - sp2 - 1;
 
-    if (version_len == 0 || (version_start + version_len != len)) {
-        LOG_ERROR("Malformed requiest line: Missing HTTP version or junk "
-                  "characters at the end.");
-        return 1;
-    }
+    if (version_len == 0 || (version_start + version_len != len))
+        return "Malformed requiest line: Missing HTTP version or junk "
+                  "characters at the end.";
 
     req->method = sdsnewlen(data + method_start, method_len);
     req->uri = sdsnewlen(data + uri_start, uri_len);
 
     char version_str[10];
-    if (version_len >= 9) {
-        LOG_ERROR("Malformed request line: version too long");
-        return 1;
-    }
+    if (version_len >= 9)
+        return "Malformed request line: version too long";
 
     memcpy(version_str, data + version_start, version_len);
     version_str[version_len] = 0;
@@ -149,31 +144,24 @@ ErrorMessage parse_request_line(http_request *req, const char *data, size_t len)
     int items_read = sscanf(version_str, "HTTP/%" SCNu8 ".%" SCNu8,
                             &req->version.major, &req->version.minor);
 
-    if (items_read == 0 || items_read > 2) {
-        LOG_ERROR("Malformed request line: incorrect version format.");
-        return 1;
-    }
+    if (items_read == 0 || items_read > 2)
+        return "Malformed request line: incorrect version format.";
+
     if (items_read == 1) {
-        if (req->version.major > 3) {
-            LOG_ERROR("Malformed request line: invalid HTTP version.");
-            return 1;
-        } else
+        if (req->version.major > 3)
+            return "Malformed request line: invalid HTTP version.";
+        else
             req->version.minor = 0;
     }
 
-    if (items_read == 2) {
-        if (!http_version_isValid(&req->version)) {
-            LOG_ERROR("Malformed request line: invalid HTTP version.");
-            return 1;
-        }
-    }
+    if (items_read == 2)
+        if (!http_version_isValid(&req->version))
+            return "Malformed request line: invalid HTTP version.";
 
-    if (!req->method || !req->uri) {
-        LOG_ERROR("Failed to allocate memory for request line components.");
-        return 1;
-    }
+    if (!req->method || !req->uri)
+        return "Failed to allocate memory for request line components.";
 
-    return 0;
+    return NULL;
 }
 
 ErrorMessage parse_headers(http_request *req, const char *data, size_t len) {
@@ -187,25 +175,22 @@ ErrorMessage parse_headers(http_request *req, const char *data, size_t len) {
 
     while (cur_line < block_end) {
         line_end = strstr(cur_line, "\r\n");
-        if (line_end == NULL) {
-            LOG_ERROR("Malformed header block: unterminated line.");
-            return 1;
-        }
+        if (line_end == NULL)
+            return "Malformed header block: unterminated line.";
 
-        if (line_end > block_end) {
-            LOG_ERROR("Malformed header block: delimiter extends into body.");
-            return 1;
-        }
+        if (line_end > block_end)
+            return "Malformed header block: delimiter extends into body.";
 
         line_len = line_end - cur_line;
 
-        if (parse_single_header(req, cur_line, line_len) != 0)
-            return 1;
+        const char* err = parse_single_header(req, cur_line, line_len);
+        if (err != NULL)
+            return err;
 
         cur_line = line_end + 2;
     }
 
-    return 0;
+    return NULL;
 }
 
 ErrorMessage parse_single_header(http_request *req, const char *line, size_t len) {
@@ -232,9 +217,8 @@ ErrorMessage parse_single_header(http_request *req, const char *line, size_t len
     size_t value_len = len - (value_start - line);
 
     sds value = sdsnewlen(value_start, value_len);
-    if (!value) {
+    if (!value)
         return "Failed to allocate memory for new value string";
-    }
     value = sdstrim(value, " ");
 
     if (!req->header)
@@ -253,38 +237,43 @@ StringResult http_request_Method(http_request *this) { return StringResult_Ok(th
 StringResult http_request_Uri(http_request *this) { return StringResult_Ok(this->uri); }
 
 HTTPVersionResult http_request_Version(http_request *this) {
-    return HTTPVersionResult_Ok(this->version);
+    return HTTPVersionResult_Ok(&this->version);
 }
 
 HTTPBodyResult http_request_Body(http_request *this) {
-    return &this->body;
+    return HTTPBodyResult_Ok(&this->body);
 }
 
-void http_request_HeaderSetValue(http_request *this, const char *headerKey,
-                                 const char *headerValue) {
+const char *http_request_HeaderSetValue(http_request *this,
+                                        const char *headerKey,
+                                        const char *headerValue) {
     this->header = map_set(this->header, headerKey, headerValue);
+    if (!this->header)
+        return "Map error: Something went wrong!";
+
+    return NULL;
 }
 
-const char *http_request_HeaderGetValue(http_request *this,
+ConstStringResult http_request_HeaderGetValue(http_request *this,
                                         const char *headerKey) {
-    return map_get(this->header, headerKey);
+    return ConstStringResult_Ok(map_get(this->header, headerKey));
 }
 
-const char **http_request_HeaderKeys(http_request *this, size_t *keys_length) {
-    return map_keys(this->header, keys_length);
+ConstStringArrResult http_request_HeaderKeys(http_request *this, size_t *keys_length) {
+    return ConstStringArrResult_Ok(map_keys(this->header, keys_length));
 }
 
-bool http_request_HeaderContains(http_request *this, const char *headerKey) {
+BoolResult http_request_HeaderContains(http_request *this, const char *headerKey) {
     const char** headerKeys = NULL;
     size_t headerKeysLength = 0;
 
     headerKeys = map_keys(this->header, &headerKeysLength);
     if (!headerKeys)
-        return false;
+        return BoolResult_Error("Failed to get header map keys.");
 
     bool contains = str_arr_contains(headerKeys, headerKey, headerKeysLength);
     free(headerKeys);
 
-    return contains;
+    return BoolResult_Ok(contains);
 }
 

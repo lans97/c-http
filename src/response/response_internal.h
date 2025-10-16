@@ -1,7 +1,7 @@
 #pragma once
 
 #include "http/body.h"
-#include "http/utils.h"
+#include "http/version.h"
 #include <map/map.h>
 #include <stdint.h>
 
@@ -13,5 +13,4 @@ struct http_response {
     http_body           body;
 };
 
-bool isStringSafe(const char* string, size_t length);
 

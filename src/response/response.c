@@ -1,9 +1,10 @@
 #include "response_internal.h"
-#include <http/response.h>
+#include "http/response.h"
 
 #include "response/response_codes.h"
+#include "http/results.h"
+#include "http/version.h"
 
-#include "logger/logger.h"
 #include "map/map.h"
 #include "sds.h"
 
@@ -14,8 +15,27 @@
 
 DEFINE_RESULT_TYPE(http_response*, HTTPResponseResult);
 
+ErrorMessage            http_response_SetStatusCode(http_response* this, uint16_t code);
+
+ConstStringResult       http_response_ReasonPhrase(http_response* this);
+ErrorMessage            http_response_SetReasonPhrase(http_response* this, const char* reason_phrase);
+
+HTTPVersionResult       http_response_Version(http_response* this);
+ErrorMessage            http_response_SetVersion(http_response* this, uint8_t major, uint8_t minor);
+
+ErrorMessage            http_response_HeaderSetValue(http_response* this, const char* headerKey, const char* headerValue);
+ConstStringResult       http_response_HeaderGetValue(http_response* this, const char* headerKey);
+
+ConstStringArrResult    http_response_HeaderKeys(http_response* this, size_t* keys_length);
+BoolResult              http_response_HeaderContains(http_response* this, const char* headerKey);
+
+ErrorMessage            http_response_SetBody(http_response* this, void* data, size_t length);
+HTTPBodyResult          http_response_GetBody(http_response* this);
+
 HTTPResponseResult http_response_new(void) {
     http_response *new_response = malloc(sizeof(http_response));
+    if (!new_response)
+        return HTTPResponseResult_Error("Failed to allocate memory");
 
     new_response->status_code = HTTP_NO_STATUS;
     new_response->reason_phrase = NULL;
@@ -25,10 +45,10 @@ HTTPResponseResult http_response_new(void) {
     new_response->body.length = 0;
     new_response->body.data = NULL;
 
-    return new_response;
+    return HTTPResponseResult_Ok(new_response);
 }
 
-sds http_response_bytes(http_response *this) {
+StringResult http_response_bytes(http_response *this) {
     sds response_string = sdsnew("");
     if (this->version.major > 1) {
         response_string = sdscatprintf(response_string, "HTTP/%d %d %s\r\n",
@@ -41,10 +61,18 @@ sds http_response_bytes(http_response *this) {
     }
     if (this->header) {
         size_t keys_length;
-        const char **headerKeys = http_response_HeaderKeys(this, &keys_length);
+
+        ConstStringArrResult res = http_response_HeaderKeys(this, &keys_length);
+        if (!res.Ok)
+            return StringResult_Error(res.Err);
+
+        const char **headerKeys = res.Value;
         for (size_t i = 0; i < keys_length; i++) {
             const char *key = headerKeys[i];
-            const char *value = http_response_HeaderGetValue(this, key);
+            ConstStringResult res = http_response_HeaderGetValue(this, key);
+            if (!res.Ok)
+                return StringResult_Error(res.Err);
+            const char *value = res.Value;
 
             response_string =
                 sdscatprintf(response_string, "%s: %s\r\n", key, value);
@@ -55,17 +83,19 @@ sds http_response_bytes(http_response *this) {
     response_string = sdscat(response_string, "\r\n");
 
     if (this->body.data && this->body.length > 0) {
-        if (!http_response_HeaderContains(this, "content-length")) {
-            LOG_ERROR("Invalid response: key 'content-length' must be set if "
-                      "response has body.");
+        BoolResult res = http_response_HeaderContains(this, "content-length");
+        if (!res.Ok)
+            return StringResult_Error(res.Err);
+        if (!res.Value) {
             sdsfree(response_string);
-            return NULL;
+            return StringResult_Error("Invalid response: key 'content-length' must be set if "
+                      "response has body.");
         }
         response_string = sdscatlen(
             response_string, (const char *)this->body.data, this->body.length);
     }
 
-    return response_string;
+    return StringResult_Ok(response_string);
 }
 
 void http_response_delete(http_response *this) {
@@ -81,48 +111,65 @@ void http_response_delete(http_response *this) {
     }
 }
 
-uint16_t http_response_StatusCode(http_response *this) {
-    return this->status_code;
+UInt16Result http_response_StatusCode(http_response *this) {
+    if (!this)
+        return UInt16Result_Error("This is null");
+    return UInt16Result_Ok(this->status_code);
 }
 
-void http_response_SetStatusCode(http_response *this, uint16_t code) {
+ErrorMessage http_response_SetStatusCode(http_response *this, uint16_t code) {
+    if (!this)
+        return "This is null";
+
     this->status_code = code;
+    return NULL;
 }
 
-const char *http_response_ReasonPhrase(http_response *this) {
-    return this->reason_phrase;
+ConstStringResult http_response_ReasonPhrase(http_response *this) {
+    if (!this)
+        return ConstStringResult_Error("This is null");
+    return ConstStringResult_Ok(this->reason_phrase);
 }
 
-void http_response_SetReasonPhrase(http_response *this,
+ErrorMessage http_response_SetReasonPhrase(http_response *this,
                                    const char *reason_phrase) {
+    if (!this)
+        return "This is null";
     if (!this->reason_phrase)
         this->reason_phrase = sdsnew(reason_phrase);
     else
         this->reason_phrase = sdscpy(this->reason_phrase, reason_phrase);
+
+    return NULL;
 }
 
-http_version http_response_Version(http_response *this) {
-    return this->version;
+HTTPVersionResult http_response_Version(http_response *this) {
+    if (!this)
+        HTTPVersionResult_Error("This is null");
+    return HTTPVersionResult_Ok(&this->version);
 }
 
-void http_response_SetVersion(http_response *this, uint8_t major,
+ErrorMessage http_response_SetVersion(http_response *this, uint8_t major,
                               uint8_t minor) {
+    if (!this)
+        return "This is null";
     this->version.major = major;
     this->version.minor = minor;
+    return NULL;
 }
 
-void http_response_HeaderSetValue(http_response *this, const char *headerKey,
+ErrorMessage http_response_HeaderSetValue(http_response *this, const char *headerKey,
                                   const char *headerValue) {
+    if (!this)
+        return "This is null";
     if (!this->header)
         this->header = map_new();
 
     if (!isStringSafe(headerKey, strlen(headerKey))) {
-        LOG_ERROR("CRLF sequence rejected in header key");
-        return;
+        return "CRLF sequence rejected in header key";
     }
     if (!isStringSafe(headerValue, strlen(headerKey))) {
-        LOG_ERROR("CRLF sequence rejected in header value");
-        return;
+        return "CRLF sequence rejected in header value";
     }
 
     sds lowerCaseKey = sdsnew(headerKey);
@@ -134,62 +181,62 @@ void http_response_HeaderSetValue(http_response *this, const char *headerKey,
     this->header = map_set(this->header, lowerCaseKey, cleanValue);
     sdsfree(cleanValue);
     sdsfree(lowerCaseKey);
+
+    return NULL;
 }
 
-const char *http_response_HeaderGetValue(http_response *this,
+ConstStringResult http_response_HeaderGetValue(http_response *this,
                                          const char *headerKey) {
-    return map_get(this->header, headerKey);
+    if (!this)
+        return ConstStringResult_Error("This is null");
+    return ConstStringResult_Ok(map_get(this->header, headerKey));
 }
 
-const char **http_response_HeaderKeys(http_response *this,
+ConstStringArrResult http_response_HeaderKeys(http_response *this,
                                       size_t *keys_length) {
+    if (!this)
+        return ConstStringArrResult_Error("This is null");
     if (!this->header)
-        return NULL;
-    return map_keys(this->header, keys_length);
+        return ConstStringArrResult_Error("Header is null");
+    return ConstStringArrResult_Ok(map_keys(this->header, keys_length));
 }
 
-bool http_response_HeaderContains(http_response *this, const char *headerKey) {
+BoolResult http_response_HeaderContains(http_response *this, const char *headerKey) {
+    if (!this)
+        return BoolResult_Error("This is null");
     const char **headerKeys = NULL;
     size_t headerKeysLength = 0;
 
     headerKeys = map_keys(this->header, &headerKeysLength);
+    if (!headerKey)
+        return BoolResult_Ok(false);
 
     bool contains = str_arr_contains(headerKeys, headerKey, headerKeysLength);
     free(headerKeys);
 
-    return contains;
+    return BoolResult_Ok(contains);
 }
 
-int http_response_SetBody(http_response *this, void *data, size_t length) {
-    if (!data) {
-        return 1;
-    }
+ErrorMessage http_response_SetBody(http_response *this, void *data, size_t length) {
+    if (!this)
+        return "This is null";
+    if (!data)
+        return "Data is null";
     if (this->body.length != 0 || this->body.data) {
         free(this->body.data);
     }
     this->body.length = length;
     this->body.data = malloc(this->body.length);
+    if (!this->body.data)
+        return "Out of memory";
 
     memcpy(this->body.data, data, length);
 
-    return 0;
+    return NULL;
 }
 
-http_body *http_response_GetBody(http_response *this) { return &this->body; }
-
-bool isStringSafe(const char *string, size_t length) {
-    for (size_t i = 0; i < length; i++) {
-        switch (string[i]) {
-        case '\r':
-            return false;
-            break;
-        case '\n':
-            return false;
-            break;
-        default:
-            continue;
-        }
-    }
-
-    return true;
+HTTPBodyResult http_response_GetBody(http_response *this) {
+    if (!this)
+        return HTTPBodyResult_Error("This is null");
+    return HTTPBodyResult_Ok(&this->body);
 }
